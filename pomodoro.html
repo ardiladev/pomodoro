@@ -1,0 +1,529 @@
+<meta charset="utf-8">
+<title>Timer de estudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14082a;
+    --bg-deep: #0b0417;
+    --slab: rgba(26, 12, 48, 0.82);
+    --focus: #a970ff;
+    --break: #e879c5;
+    --long: #c9b6ff;
+    --accent: var(--focus);
+    --quiet: rgba(214, 200, 240, 0.6);
+    --line: rgba(169, 112, 255, 0.22);
+    --clock-font: "Space Grotesk", "Segoe UI Variable Display", "SF Pro Display", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg-deep);
+    font-family: "Inter", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    color: #380047;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  body {
+    display: grid;
+    place-items: center;
+    padding: 12px;
+    background:
+      radial-gradient(90% 70% at 50% 0%, rgba(90, 40, 160, 0.35), transparent 70%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+    background-attachment: fixed;
+  }
+
+  body[data-phase="break"] { --accent: var(--break); }
+  body[data-phase="long"]  { --accent: var(--long); }
+
+  .card {
+    position: relative;
+    width: min(100%, 760px);
+    background: var(--slab);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: clamp(18px, 4vw, 30px) clamp(20px, 5vw, 34px);
+    background-image: radial-gradient(120% 90% at 50% 0%, rgba(120, 60, 200, 0.28), transparent 70%);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(201, 182, 255, 0.08);
+    text-align: center;
+  }
+
+  .task {
+    font-size: clamp(13px, 3.2vw, 17px);
+    font-weight: 500;
+    color: var(--quiet);
+    margin-bottom: clamp(8px, 2vw, 14px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task:empty { display: none; }
+
+  .clock {
+    font-family: var(--clock-font);
+    font-size: clamp(64px, min(24vw, 30vh), 230px);
+    font-weight: 600;
+    line-height: 0.88;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+    color: var(--accent);
+    text-shadow: 0 0 34px rgba(169, 112, 255, 0.45);
+    transition: color 0.4s ease, text-shadow 0.4s ease;
+  }
+
+  body[data-paused="true"] .clock {
+    color: rgba(220, 208, 245, 0.7);
+    text-shadow: none;
+  }
+
+  .bar {
+    height: 3px;
+    margin: clamp(12px, 3vw, 18px) 0 clamp(10px, 2.5vw, 14px);
+    background: rgba(169, 112, 255, 0.16);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .bar > i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transform-origin: left;
+    transition: transform 0.25s linear, background 0.4s ease;
+  }
+
+  .foot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: clamp(12px, 2.9vw, 15px);
+    color: var(--quiet);
+  }
+
+  .rounds { display: flex; gap: 5px; }
+
+  .rounds span {
+    width: 7px; height: 7px;
+    border-radius: 99px;
+    border: 1px solid rgba(201, 182, 255, 0.45);
+  }
+
+  .rounds span.done { background: var(--accent); border-color: var(--accent); }
+
+  /* --- panel de ajustes --- */
+
+  .gear {
+    position: absolute;
+    top: 10px; right: 12px;
+    width: 26px; height: 26px;
+    border: 0; border-radius: 99px;
+    background: rgba(169, 112, 255, 0.16);
+    color: rgba(220, 205, 255, 0.75);
+    font-size: 14px; line-height: 1;
+    cursor: pointer; opacity: 0.18;
+    transition: opacity 0.2s ease;
+  }
+
+  .card:hover .gear, .gear:focus-visible { opacity: 1; }
+
+  .panel {
+    display: none;
+    margin-top: clamp(14px, 3vw, 20px);
+    padding-top: clamp(14px, 3vw, 20px);
+    border-top: 1px solid var(--line);
+    text-align: left;
+  }
+
+  body[data-config="true"] .panel { display: block; }
+
+  .presets { display: flex; gap: 6px; margin-bottom: 14px; }
+
+  .presets button {
+    flex: 1;
+    padding: 7px 4px;
+    font: inherit; font-size: 12px;
+    color: rgba(224, 214, 245, 0.8);
+    background: rgba(169, 112, 255, 0.12);
+    border: 1px solid transparent;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  .presets button[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 12px;
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    color: var(--quiet);
+    margin-bottom: 4px;
+  }
+
+  input {
+    width: 100%;
+    padding: 7px 9px;
+    font: inherit; font-size: 13px;
+    color: #f3ecff;
+    background: rgba(169, 112, 255, 0.1);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+  }
+
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .wide { grid-column: 1 / -1; }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .actions button {
+    flex: 1;
+    padding: 9px;
+    font: inherit; font-size: 13px; font-weight: 550;
+    color: #0b0616;
+    background: var(--accent);
+    border: 0; border-radius: 10px;
+    cursor: pointer;
+  }
+
+  .actions button.ghost {
+    color: rgba(224, 214, 245, 0.8);
+    background: rgba(169, 112, 255, 0.14);
+  }
+
+  .hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: rgba(201, 182, 255, 0.4);
+    text-align: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="card">
+  <button class="gear" id="gear" title="Ajustes (tecla C)">☰</button>
+
+  <p class="task" id="task"></p>
+  <div class="clock" id="clock">50:00</div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="foot">
+    <span id="phase">Concentración</span>
+    <div class="rounds" id="rounds"></div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="presets" id="presets">
+      <button data-f="25" data-b="5"  data-r="4" data-l="20">25 / 5</button>
+      <button data-f="50" data-b="10" data-r="3" data-l="25">50 / 10</button>
+      <button data-f="90" data-b="20" data-r="2" data-l="30">90 / 20</button>
+    </div>
+
+    <div class="grid">
+      <div>
+        <label for="f">Estudio (min)</label>
+        <input id="f" type="number" min="1" max="180" step="1">
+      </div>
+      <div>
+        <label for="b">Descanso (min)</label>
+        <input id="b" type="number" min="1" max="60" step="1">
+      </div>
+      <div>
+        <label for="r">Ciclos por bloque</label>
+        <input id="r" type="number" min="1" max="12" step="1">
+      </div>
+      <div>
+        <label for="l">Descanso largo (min)</label>
+        <input id="l" type="number" min="1" max="90" step="1">
+      </div>
+      <div class="wide">
+        <label for="t">Qué estás estudiando</label>
+        <input id="t" type="text" maxlength="60" placeholder="Cálculo II — taller 3">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="apply">Aplicar y reiniciar</button>
+      <button class="ghost" id="close">Ocultar panel</button>
+    </div>
+    <p class="hint">Espacio: pausar · R: reiniciar · S: saltar fase · C: este panel</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DEFAULTS = { f: 50, b: 10, r: 3, l: 25, t: "", sound: true };
+  var cfg = load();
+
+  var el = {
+    clock: document.getElementById("clock"),
+    bar: document.getElementById("bar"),
+    phase: document.getElementById("phase"),
+    rounds: document.getElementById("rounds"),
+    task: document.getElementById("task"),
+    panel: document.getElementById("panel"),
+    presets: document.getElementById("presets")
+  };
+  var input = { f: document.getElementById("f"), b: document.getElementById("b"),
+                r: document.getElementById("r"), l: document.getElementById("l"),
+                t: document.getElementById("t") };
+
+  var phase = "focus", round = 1, paused = false, endsAt = 0, leftWhenPaused = 0;
+
+  function load() {
+    var c = Object.assign({}, DEFAULTS);
+    try {
+      var saved = JSON.parse(localStorage.getItem("timerEstudio") || "{}");
+      Object.keys(DEFAULTS).forEach(function (k) {
+        if (saved[k] !== undefined && saved[k] !== null) c[k] = saved[k];
+      });
+    } catch (e) {}
+    var q = new URLSearchParams(location.search);
+    if (q.get("focus"))  c.f = +q.get("focus");
+    if (q.get("break"))  c.b = +q.get("break");
+    if (q.get("rounds")) c.r = +q.get("rounds");
+    if (q.get("long"))   c.l = +q.get("long");
+    if (q.get("task"))   c.t = q.get("task");
+    if (q.get("sound") === "off") c.sound = false;
+    return c;
+  }
+
+  function save() {
+    try { localStorage.setItem("timerEstudio", JSON.stringify(cfg)); } catch (e) {}
+  }
+
+  function duration(p) {
+    return (p === "focus" ? cfg.f : p === "break" ? cfg.b : cfg.l) * 60000;
+  }
+
+  function beep() {
+    if (!cfg.sound) return;
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.22].forEach(function (offset, i) {
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = i ? 660 : 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + offset + 0.2);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime + offset + 0.25);
+      });
+    } catch (e) {}
+  }
+
+  function advance() {
+    if (phase === "focus") {
+      phase = round >= cfg.r ? "long" : "break";
+    } else {
+      if (phase === "long") round = 0;
+      phase = "focus";
+      round++;
+    }
+    endsAt += duration(phase);
+  }
+
+  function reset() {
+    phase = "focus"; round = 1; paused = false;
+    endsAt = Date.now() + duration("focus");
+    leftWhenPaused = duration("focus");
+    render();
+  }
+
+  function drawDots() {
+    el.rounds.innerHTML = "";
+    for (var i = 0; i < cfg.r; i++) el.rounds.appendChild(document.createElement("span"));
+  }
+
+  function render() {
+    var total = duration(phase);
+    var left = paused ? leftWhenPaused : endsAt - Date.now();
+    var secs = Math.max(0, Math.ceil(left / 1000));
+
+    el.clock.textContent =
+      String(Math.floor(secs / 60)).padStart(2, "0") + ":" + String(secs % 60).padStart(2, "0");
+    el.bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, left / total)) + ")";
+    el.phase.textContent = paused ? "En pausa"
+      : phase === "focus" ? "Concentración"
+      : phase === "long" ? "Descanso largo" : "Descanso";
+    el.task.textContent = cfg.t;
+
+    var done = phase === "focus" ? round - 1 : round;
+    var dots = el.rounds.children;
+    for (var i = 0; i < dots.length; i++) dots[i].classList.toggle("done", i < done);
+
+    document.body.dataset.phase = phase;
+    document.body.dataset.paused = paused;
+  }
+
+  function tick() {
+    if (!paused) {
+      var guard = 0;
+      while (Date.now() >= endsAt && guard++ < 200) {
+        advance();
+        if (guard === 1) beep();
+      }
+    }
+    render();
+  }
+
+  function toggleRun() {
+    if (paused) { endsAt = Date.now() + leftWhenPaused; paused = false; }
+    else { leftWhenPaused = endsAt - Date.now(); paused = true; }
+    render();
+  }
+
+  function fillInputs() {
+    input.f.value = cfg.f; input.b.value = cfg.b;
+    input.r.value = cfg.r; input.l.value = cfg.l; input.t.value = cfg.t;
+    markPreset();
+  }
+
+  function markPreset() {
+    Array.prototype.forEach.call(el.presets.children, function (b) {
+      b.setAttribute("aria-pressed",
+        +b.dataset.f === +cfg.f && +b.dataset.b === +cfg.b);
+    });
+  }
+
+  function clamp(v, lo, hi, fb) {
+    v = Math.round(+v);
+    return isFinite(v) && v >= lo && v <= hi ? v : fb;
+  }
+
+  // eventos
+  document.getElementById("gear").addEventListener("click", function (e) {
+    e.stopPropagation();
+    document.body.dataset.config = document.body.dataset.config !== "true";
+  });
+
+  document.getElementById("close").addEventListener("click", function (e) {
+    e.stopPropagation();
+    document.body.dataset.config = "false";
+  });
+
+  el.presets.addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    cfg.f = +b.dataset.f; cfg.b = +b.dataset.b;
+    cfg.r = +b.dataset.r; cfg.l = +b.dataset.l;
+    fillInputs(); save(); drawDots(); reset();
+  });
+
+  document.getElementById("apply").addEventListener("click", function (e) {
+    e.stopPropagation();
+    cfg.f = clamp(input.f.value, 1, 180, cfg.f);
+    cfg.b = clamp(input.b.value, 1, 60, cfg.b);
+    cfg.r = clamp(input.r.value, 1, 12, cfg.r);
+    cfg.l = clamp(input.l.value, 1, 90, cfg.l);
+    cfg.t = input.t.value.trim();
+    fillInputs(); save(); drawDots();
+    paused = false; reset();
+    document.body.dataset.config = "false";
+  });
+
+  el.panel.addEventListener("click", function (e) { e.stopPropagation(); });
+
+  document.addEventListener("click", toggleRun);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target.tagName === "INPUT") {
+      if (e.key === "Enter") document.getElementById("apply").click();
+      return;
+    }
+    var k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); toggleRun(); }
+    if (k === "r") { paused = false; reset(); }
+    if (k === "s") { endsAt = Date.now(); paused = false; tick(); }
+    if (k === "c") document.body.dataset.config = document.body.dataset.config !== "true";
+  });
+
+  // --- mantener el conteo vivo en segundo plano / segunda pantalla ---
+
+  // 1) Un tono inaudible marca la pestaña como "reproduciendo audio";
+  //    Chrome/Edge no aplican el throttling agresivo a esas pestañas.
+  var keepAlive = null;
+  function startKeepAlive() {
+    try {
+      if (!keepAlive) {
+        keepAlive = new (window.AudioContext || window.webkitAudioContext)();
+        var osc = keepAlive.createOscillator(), gain = keepAlive.createGain();
+        gain.gain.value = 0.0001;
+        osc.frequency.value = 30;
+        osc.connect(gain).connect(keepAlive.destination);
+        osc.start();
+      }
+      if (keepAlive.state === "suspended") keepAlive.resume();
+    } catch (e) {}
+  }
+
+  // 2) Evitar que la pantalla se apague o el sistema suspenda la ventana.
+  var wakeLock = null;
+  function keepScreenOn() {
+    if (!navigator.wakeLock || wakeLock || document.hidden) return;
+    navigator.wakeLock.request("screen").then(function (l) {
+      wakeLock = l;
+      l.addEventListener("release", function () { wakeLock = null; });
+    }).catch(function () {});
+  }
+
+  // 3) Al volver a primer plano, recalcular y repintar de inmediato.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) { startKeepAlive(); keepScreenOn(); tick(); }
+  });
+  window.addEventListener("focus", tick);
+  window.addEventListener("pageshow", tick);
+
+  ["click", "keydown", "pointerdown"].forEach(function (ev) {
+    document.addEventListener(ev, function () { startKeepAlive(); keepScreenOn(); }, true);
+  });
+
+  // arranque
+  drawDots();
+  fillInputs();
+  endsAt = Date.now() + duration("focus");
+  leftWhenPaused = duration("focus");
+  startKeepAlive();
+  keepScreenOn();
+  render();
+
+  // El tick vive en un Web Worker: no depende del repintado de la ventana.
+  var ticker = null;
+  try {
+    var src = "var id=null;onmessage=function(e){" +
+              "if(e.data==='start'){if(id)clearInterval(id);" +
+              "id=setInterval(function(){postMessage(0);},200);}" +
+              "else{clearInterval(id);id=null;}};";
+    ticker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    ticker.onmessage = function () { tick(); };
+    ticker.postMessage("start");
+  } catch (e) {}
+  if (!ticker) setInterval(tick, 200);
+
+  // Y además repintamos por frame mientras la ventana sea visible.
+  (function frame() { tick(); requestAnimationFrame(frame); })();
+})();
+</script>
